@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+import csv
+import requests
+from art import tprint
+from collections import defaultdict
+import os
+from clint.textui import progress
+
+delim = " - "
+endOption = "x" + delim + "Exit program"
+optionString = "Enter Your Option : "
+sureString = "Are you sure (Y/n) : "
+invalidString = "Invalid option entered, Please Enter a valid option\n"
+DEVICE = "/dev/null"
+yes = ["YES", "y", "Y", "yes", ""]
+
+
+def createbootable(file_name, device):
+    print("Format device")
+    os.system("sudo umount " + device)
+    os.system("sudo mkfs.ext4 " + device)
+    os.system("sudo dd if=" + file_name + " of=" + device + " status=progress")
+
+
+def read_option(myList):
+    print()
+    option = input(optionString)
+    if option == "q":
+        quit()
+    if (not option.isdigit() and option not in myList) or (
+        option.isdigit() and int(option) not in myList
+    ):
+        print(invalidString)
+        return read_option(myList)
+    if input(sureString) in yes:
+        return option
+    quit()
+
+
+def get_usb():
+    usbList = []
+    usbRaw = os.popen("lsblk | grep -v sda").read()
+    count = 1
+    print("Select your device from the following list \n")
+    print("    " + usbRaw.splitlines()[0])
+    for line in usbRaw.splitlines()[1:]:
+        usbList.append(line)
+        print(str(count) + delim + line)
+        count += 1
+    option = read_option(list(range(1, len(usbList) + 1)))
+    if option != "x":
+        line = usbList[int(option) - 1]
+        device = line.split(" ", 1)[0]
+        if "─" in device:
+            device = device.split("─", 1)[1]
+        return "/dev/" + device
+    return "null"
+
+
+def get_csv(column):
+    columns = defaultdict(list)
+
+    with open("distros.csv") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            for (k, v) in row.items():
+                columns[k].append(v)
+    return columns[column]
+
+
+def get_iso(url, file_name):
+    r = requests.get(url, stream=True)
+    with open(file_name, "wb") as f:
+        total_length = int(r.headers.get("content-length"))
+        for chunk in progress.bar(
+            r.iter_content(chunk_size=1024), expected_size=(total_length / 1024) + 1
+        ):
+            if chunk:
+                f.write(chunk)
+                f.flush()
+
+
+def main():
+    try:
+        os.system("clear")
+        tprint("TUDHU")
+        print("Welcome to The Ultimate Distro Hopping Utility")
+        distro_url = get_csv("Url")
+        distros_names = get_csv("Distro")
+        for idx, distro in enumerate(distros_names):
+            print("{} {}".format(idx + 1, distro))
+        selected_distro = int(read_option(list(range(1, len(distros_names) + 1))))
+        url = distro_url[selected_distro - 1]
+        selected_distro = distros_names[selected_distro - 1]
+        get_iso(url, selected_distro)
+        device = get_usb()
+        createbootable(selected_distro, device)
+
+    except KeyboardInterrupt:
+        print("BYE :D")
+
+
+if __name__ == "__main__":
+    main()
